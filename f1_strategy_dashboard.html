@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pit Stop Prediction &amp; Tyre Strategy Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A0C0E;
+    --panel:#14181C;
+    --panel-border:#262C32;
+    --text:#ECEFF1;
+    --muted:#8B94A0;
+    --soft:#E10600;
+    --medium:#E8B923;
+    --hard:#8A929C;
+    --inter:#43B02A;
+    --wet:#2E86DE;
+    --red:#E10600;
+    --red-soft:#5A1210;
+    --safe:#43B02A;
+    --display:'Rajdhani', 'Segoe UI', sans-serif;
+    --body:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    --mono:'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--text); font-family:var(--body); line-height:1.45; -webkit-font-smoothing:antialiased;}
+  a{color:var(--red);}
+  .wrap{max-width:1180px; margin:0 auto; padding:0 24px 60px;}
+
+  /* ---------- Hero: live telemetry strip ---------- */
+  .hero{
+    position:relative; overflow:hidden; border-bottom:1px solid var(--panel-border);
+    background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.025) 0 2px, transparent 2px 34px),
+      radial-gradient(ellipse 900px 420px at 85% -10%, rgba(225,6,0,0.10), transparent 60%),
+      linear-gradient(180deg, #08090b 0%, #0A0C0E 60%, #0a0c0e 100%);
+  }
+  .hero-inner{max-width:1180px; margin:0 auto; padding:44px 24px 30px; display:flex; align-items:center; justify-content:space-between; gap:36px; flex-wrap:wrap;}
+  .eyebrow{font-family:var(--mono); letter-spacing:.14em; text-transform:uppercase; font-size:11px; color:var(--muted); margin-bottom:12px; display:flex; align-items:center; gap:8px;}
+  .eyebrow .dot{width:7px; height:7px; border-radius:50%; background:var(--red); box-shadow:0 0 8px 1px rgba(225,6,0,.7); animation:pulse 1.6s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1;} 50%{opacity:.35;}}
+  .hero-text{max-width:600px;}
+  h1{font-family:var(--display); font-weight:600; font-size:36px; margin:0 0 10px; letter-spacing:.2px;}
+  .subtitle{color:var(--muted); font-size:14.5px; max-width:560px;}
+
+  /* live ticker */
+  .ticker{
+    margin-top:22px; font-family:var(--mono); font-size:12.5px; color:var(--text);
+    background:#0F1317; border:1px solid var(--panel-border); border-radius:7px;
+    padding:10px 14px; display:flex; align-items:center; gap:10px; max-width:560px;
+  }
+  .ticker .lbl{color:var(--red); font-weight:700; letter-spacing:.06em; flex-shrink:0;}
+  .ticker .msg{color:var(--muted); transition:opacity .35s ease;}
+  .ticker .clock{margin-left:auto; color:var(--text); font-variant-numeric:tabular-nums; flex-shrink:0;}
+
+  /* tyre gauge */
+  .gauge-col{flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:10px;}
+  .gauge-wrap{position:relative; width:150px; height:150px;}
+  .gauge-wrap svg{width:100%; height:100%; transform:rotate(-90deg);}
+  .gauge-track{fill:none; stroke:var(--panel-border); stroke-width:9;}
+  .gauge-fill{fill:none; stroke-width:9; stroke-linecap:round; transition:stroke .5s ease;}
+  .gauge-label{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;}
+  .gauge-label .compound{font-family:var(--display); font-weight:700; font-size:15px; letter-spacing:.04em; transition:color .5s ease;}
+  .gauge-label .slope{font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:2px;}
+  .gauge-caption{font-family:var(--mono); font-size:10px; color:var(--muted); letter-spacing:.08em; text-transform:uppercase;}
+
+  @media (max-width:760px){ .hero-inner{flex-direction:column; align-items:flex-start;} .gauge-col{align-self:center;} }
+
+  /* ---------- Thesis band ---------- */
+  .thesis{
+    display:flex; align-items:center; gap:28px; flex-wrap:wrap;
+    background:var(--panel); border:1px solid var(--panel-border);
+    border-radius:10px; padding:22px 26px; margin:28px 0 0;
+  }
+  .thesis-text{flex:1; min-width:240px;}
+  .thesis-text .big{font-family:var(--display); font-weight:600; font-size:19px; color:var(--text); margin-bottom:4px;}
+  .thesis-text .small{color:var(--muted); font-size:13px;}
+  .cost-units{display:flex; align-items:flex-end; gap:22px; flex-wrap:wrap;}
+  .cost-group{text-align:center;}
+  .squares{display:grid; grid-template-columns:repeat(7,12px); gap:4px; margin-bottom:8px; min-height:28px; align-content:end;}
+  .sq{width:12px; height:12px; border-radius:2px;}
+  .sq.a{background:var(--red);}
+  .sq.b{background:var(--medium);}
+  .sq.c{background:var(--muted);}
+  .cost-label{font-family:var(--mono); font-size:11px; color:var(--muted); max-width:120px;}
+  .cost-label b{color:var(--text); display:block; font-size:13px;}
+
+  /* ---------- Stat row ---------- */
+  .stats{display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:14px; margin:26px 0 40px;}
+  .stat{background:var(--panel); border:1px solid var(--panel-border); border-radius:8px; padding:16px 18px;}
+  .stat .label{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px;}
+  .stat .value{font-family:var(--mono); font-size:21px; color:var(--text);}
+  .stat .value.red{color:var(--red);}
+  .stat .value.safe{color:var(--safe);}
+
+  /* ---------- Panels grid ---------- */
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:20px;}
+  @media (max-width:860px){ .grid{grid-template-columns:1fr;} }
+  .panel{background:var(--panel); border:1px solid var(--panel-border); border-radius:10px; padding:22px;}
+  .panel h2{font-family:var(--display); font-weight:600; font-size:18px; margin:0 0 4px;}
+  .panel .desc{color:var(--muted); font-size:12.5px; margin-bottom:14px;}
+  .chart-holder{position:relative; height:280px;}
+
+  select, .toggle-btn{
+    font-family:var(--mono); font-size:12px; background:#0F1317; color:var(--text);
+    border:1px solid var(--panel-border); border-radius:6px; padding:6px 10px; cursor:pointer;
+  }
+
+  .cm-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;}
+  .cm-cell{border-radius:8px; padding:14px; text-align:center; border:1px solid var(--panel-border);}
+  .cm-cell .cm-label{font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:6px;}
+  .cm-cell .cm-count{font-family:var(--mono); font-size:24px;}
+  .cm-cell .cm-cost{font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:4px;}
+  .cm-cell.correct{background:rgba(67,176,42,0.08);}
+  .cm-cell.fn{background:rgba(225,6,0,0.14); border-color:var(--red-soft);}
+  .cm-cell.fp{background:rgba(232,185,35,0.08);}
+  .cm-summary{display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px 16px; font-family:var(--mono); font-size:12.5px; padding-top:10px; border-top:1px solid var(--panel-border);}
+  .cm-summary b{color:var(--red); font-size:15px;}
+  .cm-note{font-size:11.5px; color:var(--muted); margin-top:10px; line-height:1.5;}
+
+  table{width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12px; margin-top:8px;}
+  th, td{text-align:left; padding:7px 6px; border-bottom:1px solid var(--panel-border);}
+  th{color:var(--muted); font-weight:400; text-transform:uppercase; font-size:10.5px; letter-spacing:.05em;}
+  tr.best td{color:var(--red);}
+
+  /* ---------- Live threshold panel ---------- */
+  .live-panel{grid-column:1 / -1;}
+  .live-badge{
+    display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-size:10.5px;
+    letter-spacing:.1em; text-transform:uppercase; color:var(--red); border:1px solid rgba(225,6,0,.4);
+    background:rgba(225,6,0,.08); border-radius:20px; padding:3px 10px 3px 8px; margin-bottom:10px;
+  }
+  .live-badge .dot{width:6px; height:6px; border-radius:50%; background:var(--red); animation:pulse 1.6s ease-in-out infinite;}
+  .slider-row{display:flex; align-items:center; gap:16px; margin:18px 0 8px; flex-wrap:wrap;}
+  input[type=range]{flex:1; min-width:220px; accent-color:var(--red); height:4px;}
+  .thresh-readout{font-family:var(--mono); font-size:13px; color:var(--text); min-width:64px;}
+  .live-metrics{display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:12px; margin-top:16px;}
+  .live-metric{background:#0F1317; border:1px solid var(--panel-border); border-radius:8px; padding:12px 14px; text-align:center;}
+  .live-metric .lm-label{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px;}
+  .live-metric .lm-value{font-family:var(--mono); font-size:22px; color:var(--red); transition:color .2s ease;}
+  .live-chart-holder{position:relative; height:220px; margin-top:18px;}
+
+  footer{margin-top:40px; padding-top:24px; border-top:1px solid var(--panel-border); color:var(--muted); font-size:12px;}
+  footer h3{color:var(--text); font-size:13px; font-weight:600; margin:18px 0 6px;}
+  footer ul{margin:0 0 6px; padding-left:18px;}
+  footer li{margin-bottom:4px;}
+  .flag{background:rgba(232,185,35,0.08); border:1px solid rgba(232,185,35,0.3); border-radius:8px; padding:14px 16px; margin-top:16px; color:var(--text);}
+  .flag b{color:var(--medium);}
+
+  @media (prefers-reduced-motion: reduce){ *{animation:none !important; transition:none !important;} }
+</style>
+</head>
+<body>
+
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-text">
+      <div class="eyebrow"><span class="dot"></span>F1 Strategy Analytics — Portfolio Project</div>
+      <h1>Pit Stop Prediction &amp; Tyre Strategy Dashboard</h1>
+      <div class="subtitle">96,242 clean lap-by-lap records &middot; 31 drivers &middot; 2022&ndash;2025 seasons. Cleaning decisions justified from the data itself, four SQL strategy queries, and a Random Forest model that predicts whether a driver pits on the next lap.</div>
+      <div class="ticker">
+        <span class="lbl">INSIGHT</span>
+        <span class="msg" id="tickerMsg">Loading…</span>
+        <span class="clock" id="liveClock">00:00:00</span>
+      </div>
+    </div>
+    <div class="gauge-col" aria-hidden="true">
+      <div class="gauge-wrap">
+        <svg viewBox="0 0 140 140">
+          <circle class="gauge-track" cx="70" cy="70" r="60"></circle>
+          <circle class="gauge-fill" id="gaugeFill" cx="70" cy="70" r="60" stroke="#E10600"
+                  stroke-dasharray="377" stroke-dashoffset="377"></circle>
+        </svg>
+        <div class="gauge-label">
+          <div class="compound" id="gaugeCompound">SOFT</div>
+          <div class="slope" id="gaugeSlope">&minus;0.97 / lap</div>
+        </div>
+      </div>
+      <div class="gauge-caption">Live tyre degradation</div>
+    </div>
+  </div>
+</section>
+
+<div class="wrap">
+
+  <div class="thesis">
+    <div class="thesis-text">
+      <div class="big">LapTime_Delta and TyreLife alone drive 63% of the pit-call model&rsquo;s decisions &mdash; before compound choice even matters.</div>
+      <div class="small">Gini importance from the trained Random Forest classifier (300 trees, class_weight='balanced', n&asymp;96k laps).</div>
+    </div>
+    <div class="cost-units">
+      <div class="cost-group">
+        <div class="squares">
+          <div class="sq a"></div><div class="sq a"></div><div class="sq a"></div><div class="sq a"></div><div class="sq a"></div><div class="sq a"></div><div class="sq a"></div>
+        </div>
+        <div class="cost-label"><b>37%</b>LapTime_Delta</div>
+      </div>
+      <div class="cost-group">
+        <div class="squares">
+          <div class="sq b"></div><div class="sq b"></div><div class="sq b"></div><div class="sq b"></div><div class="sq b"></div>
+        </div>
+        <div class="cost-label"><b>26%</b>TyreLife</div>
+      </div>
+      <div class="cost-group">
+        <div class="squares">
+          <div class="sq c"></div><div class="sq c"></div><div class="sq c"></div>
+        </div>
+        <div class="cost-label"><b>14%</b>Cumulative Degradation</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="label">Laps analyzed</div><div class="value">96,242</div></div>
+    <div class="stat"><div class="label">Drivers</div><div class="value">31</div></div>
+    <div class="stat"><div class="label">Seasons</div><div class="value">2022&ndash;2025</div></div>
+    <div class="stat"><div class="label">Pit-next-lap base rate</div><div class="value">2.9%</div></div>
+    <div class="stat"><div class="label">Best model</div><div class="value red">Random Forest</div></div>
+  </div>
+
+  <div class="grid">
+
+    <!-- Panel 1: Compound performance / degradation toggle -->
+    <div class="panel">
+      <h2>Tyre Compound Performance</h2>
+      <div class="desc">SQL Query 1 &amp; 3 &mdash; lap time adjusted for tyre age, and degradation slope from a linear fit of Cumulative_Degradation vs. TyreLife.</div>
+      <select id="compoundSelect">
+        <option value="paceWorn" selected>Avg lap time — worn tyres (16+ laps)</option>
+        <option value="degradation">Degradation rate (per lap of tyre life)</option>
+      </select>
+      <div class="chart-holder" style="margin-top:14px;"><canvas id="compoundChart"></canvas></div>
+      <div id="compoundNote" style="display:none; font-size:11.5px; color:var(--medium); margin-top:10px;">
+        ⚠ INTERMEDIATE and WET degrade fastest of all (&minus;2.11, &minus;2.13), but that's almost certainly drying/crossover track conditions rather than pure mechanical wear &mdash; those compounds only run when the track surface is actively changing.
+      </div>
+    </div>
+
+    <!-- Panel 2: Pit stop lap distribution -->
+    <div class="panel">
+      <h2>Pit Stop Lap Distribution</h2>
+      <div class="desc">All races combined. The modal pit lap is circuit-specific &mdash; as early as lap 10 at Azerbaijan vs. lap 34&ndash;40 at longer races like Bahrain and Britain.</div>
+      <div class="chart-holder"><canvas id="pitDistChart"></canvas></div>
+    </div>
+
+    <!-- Panel 3: Position gain by pit timing -->
+    <div class="panel">
+      <h2>Position Gain by Pit Timing</h2>
+      <div class="desc">Median net position change by when a driver made their first stop (% of race distance). Median used, not mean &mdash; a handful of retirement-affected races drag the "Late" mean to an impossible &minus;30.5.</div>
+      <div class="chart-holder"><canvas id="pitTimingChart"></canvas></div>
+      <div class="cm-note">Mid-race stops (34&ndash;66% distance) show the only positive median outcome: <b style="color:var(--text)">+2 positions</b>, vs. 0 for both early and late first stops.</div>
+    </div>
+
+    <!-- Panel 4: Confusion matrix -->
+    <div class="panel">
+      <h2>Confusion Matrix — Pit Next Lap</h2>
+      <div class="desc">Random Forest on the held-out test set (n=19,249, 20% split, stratified).</div>
+      <div class="cm-grid" id="cmGrid"></div>
+      <div class="cm-summary">
+        <span>Precision: <b>0.14</b></span>
+        <span>Recall: <b>0.74</b></span>
+        <span>F1: <b>0.23</b></span>
+        <span>ROC&#8209;AUC: <b>0.889</b></span>
+      </div>
+      <div class="cm-note">Low precision means ~6 false alarms per correct pit call &mdash; the model is tuned to catch nearly all real pit stops (74% recall) at the cost of over-flagging. Best used as an early-warning signal for strategists to double-check, not an autonomous trigger.</div>
+    </div>
+
+    <!-- Panel 5: Feature importance -->
+    <div class="panel">
+      <h2>What Drives the Prediction</h2>
+      <div class="desc">Random Forest Gini importance across all six input features (Compound one-hot encoded).</div>
+      <div class="chart-holder" style="height:320px;"><canvas id="importanceChart"></canvas></div>
+    </div>
+
+    <!-- Panel 6: Model comparison -->
+    <div class="panel">
+      <h2>Model Comparison</h2>
+      <div class="desc">Logistic Regression vs. Random Forest, same features, same split, both with class_weight='balanced'.</div>
+      <div class="chart-holder"><canvas id="modelChart"></canvas></div>
+      <table>
+        <thead><tr><th>Model</th><th>ROC-AUC</th><th>Precision</th><th>Recall</th><th>F1</th></tr></thead>
+        <tbody id="modelTable"></tbody>
+      </table>
+    </div>
+
+    <!-- Panel 7: LIVE threshold explorer -->
+    <div class="panel live-panel">
+      <div class="live-badge"><span class="dot"></span>Live</div>
+      <h2>Precision&ndash;Recall Threshold Explorer</h2>
+      <div class="desc">The 0.5 cutoff isn't fixed &mdash; it's a dial. Drag to see how the "pit next lap" flag trades precision for recall at different operating thresholds.</div>
+      <div class="slider-row">
+        <span style="font-family:var(--mono); font-size:11px; color:var(--muted);">t=0.3</span>
+        <input type="range" id="threshSlider" min="0.3" max="0.7" step="0.05" value="0.5">
+        <span style="font-family:var(--mono); font-size:11px; color:var(--muted);">t=0.7</span>
+        <span class="thresh-readout">t = <b id="threshVal">0.50</b></span>
+      </div>
+      <div class="live-metrics">
+        <div class="live-metric"><div class="lm-label">Precision</div><div class="lm-value" id="lmPrecision">0.14</div></div>
+        <div class="live-metric"><div class="lm-label">Recall</div><div class="lm-value" id="lmRecall">0.74</div></div>
+        <div class="live-metric"><div class="lm-label">F1</div><div class="lm-value" id="lmF1">0.23</div></div>
+        <div class="live-metric"><div class="lm-label">Laps flagged</div><div class="lm-value" id="lmFlagged">3,042</div></div>
+      </div>
+      <div class="live-chart-holder"><canvas id="prChart"></canvas></div>
+    </div>
+
+  </div>
+
+  <footer>
+    <h3>Methodology notes</h3>
+    <ul>
+      <li>Started from <code>f1_strategy_dataset_v6.csv</code> (101,371 rows). Five cleaning decisions applied, each investigated before acting: dropped 66 rows of missing <code>Compound</code> (two full-stint telemetry gaps: RUS/Austria 2022, STR/Monaco 2023), dropped 1 row of undefined <code>PitNextLap</code> (the dataset's final recorded lap), filled 1,848 missing <code>Prev_TyreLife</code> with 0 (structurally undefined on a driver's first lap, not unknown), flagged (not dropped) 1 row of lap-1 laps per session as <code>Is_Racing_Lap = 0</code> since lap 1 includes grid/formation-lap effects that distort pace, and dropped 5,062 pre-season session rows since <code>Position</code> isn't meaningful outside competitive sessions.</li>
+      <li>Final clean dataset: 96,242 rows, zero missing values, exported as <code>f1_clean.csv</code> and loaded into SQLite (<code>f1.db</code>, table <code>laps</code>) for the four strategy queries.</li>
+      <li>Model: <code>PitNextLap</code> predicted from <code>TyreLife</code>, <code>Cumulative_Degradation</code>, <code>Compound</code>, <code>Position</code>, <code>LapTime_Delta</code>, and <code>Stint</code>. Only ~2.9% of laps are followed by a pit stop, so both models use <code>class_weight='balanced'</code> and are compared on ROC-AUC rather than raw accuracy.</li>
+      <li>Random Forest (300 trees, max_depth=10) clearly outperforms Logistic Regression on ROC-AUC (0.889 vs. 0.784) &mdash; pit decisions hinge on non-linear combinations of tyre age, degradation, and pace that tree splits capture better than a linear boundary.</li>
+    </ul>
+
+    <div class="flag">
+      <b>Small-sample flag:</b> the "Late" pit-timing bucket (first stop after 66% race distance) has only n=105 driver-races, mostly incident- or retirement-affected races where scoring around a DNF gets erratic. Its median (0) is more trustworthy than its mean (&minus;30.5, an outlier-driven artifact), but read it with caution either way.
+    </div>
+  </footer>
+
+</div>
+
+<script>
+const COLORS = { soft:'#E10600', medium:'#E8B923', hard:'#8A929C', inter:'#43B02A', wet:'#2E86DE', red:'#E10600', muted:'#8B94A0', grid:'#262C32', text:'#ECEFF1' };
+Chart.defaults.font.family = "'SFMono-Regular', Consolas, monospace";
+Chart.defaults.color = COLORS.muted;
+
+/* ---------------- Real data, computed from f1_clean.csv / f1.db ---------------- */
+const paceWornData = [
+  {label:'SOFT', value:86.9, color:COLORS.soft},
+  {label:'MEDIUM', value:87.5, color:COLORS.medium},
+  {label:'HARD', value:89.0, color:COLORS.hard}
+];
+
+const degradationData = [
+  {label:'HARD', value:-0.24, color:COLORS.hard},
+  {label:'MEDIUM', value:-0.57, color:COLORS.medium},
+  {label:'SOFT', value:-0.97, color:COLORS.soft},
+  {label:'INTERMEDIATE', value:-2.11, color:COLORS.inter},
+  {label:'WET', value:-2.13, color:COLORS.wet}
+];
+
+// Approximate pit-stop lap distribution shape (from the exported dashboard histogram, 4-lap bins)
+const pitDistData = [
+  {lap:'0-4',n:25},{lap:'4-8',n:55},{lap:'8-12',n:190},{lap:'12-16',n:300},
+  {lap:'16-20',n:250},{lap:'20-24',n:175},{lap:'24-28',n:210},{lap:'28-32',n:230},
+  {lap:'32-36',n:260},{lap:'36-40',n:150},{lap:'40-44',n:165},{lap:'44-48',n:145},
+  {lap:'48-52',n:100},{lap:'52-56',n:90},{lap:'56-60',n:40},{lap:'60-64',n:20},
+  {lap:'64-68',n:15},{lap:'68-72',n:12},{lap:'72-76',n:6},{lap:'76-80',n:2}
+];
+
+const pitTimingData = [
+  {label:'Early\n(<=33%)', median:0, n:877},
+  {label:'Mid\n(34-66%)', median:2, n:685},
+  {label:'Late\n(>66%)*', median:0, n:105}
+];
+
+const cmData = { tn:16062, fp:2630, fn:145, tp:412 };
+
+const importanceData = [
+  {feature:'LapTime_Delta', value:0.37},
+  {feature:'TyreLife', value:0.26},
+  {feature:'Cumulative_Degradation', value:0.14},
+  {feature:'Stint', value:0.10},
+  {feature:'Position', value:0.06},
+  {feature:'Compound: MEDIUM', value:0.025},
+  {feature:'Compound: SOFT', value:0.02},
+  {feature:'Compound: INTERMEDIATE', value:0.01},
+  {feature:'Compound: WET', value:0.006}
+];
+
+const modelData = [
+  {name:'Logistic Regression', roc_auc:0.784, precision:null, recall:null, f1:null, best:false},
+  {name:'Random Forest', roc_auc:0.889, precision:0.14, recall:0.74, f1:0.23, best:true}
+];
+
+// Measured points from the precision-recall sweep (real, from the notebook)
+const prPoints = [
+  {t:0.30, p:0.08, r:0.87, f1:0.14, flagged:5775},
+  {t:0.50, p:0.14, r:0.74, f1:0.23, flagged:3042},
+  {t:0.70, p:0.28, r:0.40, f1:0.33, flagged:803}
+];
+
+/* ---------------- Hero: live tyre gauge + insight ticker ---------------- */
+(function(){
+  const compounds = [
+    {name:'SOFT', slope:-0.97, color:COLORS.soft},
+    {name:'MEDIUM', slope:-0.57, color:COLORS.medium},
+    {name:'HARD', slope:-0.24, color:COLORS.hard},
+    {name:'INTERMEDIATE', slope:-2.11, color:COLORS.inter},
+    {name:'WET', slope:-2.13, color:COLORS.wet}
+  ];
+  const fill = document.getElementById('gaugeFill');
+  const compoundLabel = document.getElementById('gaugeCompound');
+  const slopeLabel = document.getElementById('gaugeSlope');
+  const CIRC = 377; // 2*pi*60
+  let idx = 0;
+
+  function setCompound(i){
+    const c = compounds[i];
+    compoundLabel.textContent = c.name;
+    compoundLabel.style.color = c.color;
+    slopeLabel.textContent = c.slope.toFixed(2) + ' / lap';
+    fill.setAttribute('stroke', c.color);
+    // wear cycle: arc drains over ~4s then resets, speed scaled loosely to |slope|
+    const speed = Math.max(1.6, 5.2 - Math.abs(c.slope));
+    fill.style.transition = 'none';
+    fill.style.strokeDashoffset = 0;
+    void fill.offsetWidth; // reflow to restart transition
+    fill.style.transition = `stroke-dashoffset ${speed}s linear`;
+    requestAnimationFrame(()=>{ fill.style.strokeDashoffset = CIRC; });
+  }
+  setCompound(0);
+  setInterval(()=>{ idx = (idx+1) % compounds.length; setCompound(idx); }, 4200);
+
+  const insights = [
+    'SOFT degrades at &minus;0.97/lap &mdash; roughly 4x faster than HARD (&minus;0.24/lap)',
+    'Mid-race pit stops (34&ndash;66% distance) show a median +2 position gain',
+    'Random Forest reaches 0.889 ROC-AUC vs. 0.784 for Logistic Regression',
+    'Model flags 3,042 laps to catch 412 real pit-next-lap events (74% recall)',
+    'LapTime_Delta + TyreLife drive 63% of the model&rsquo;s pit-call decisions',
+    'Modal pit lap ranges from lap 10 (Azerbaijan) to lap 34&ndash;40 (Bahrain, Britain)'
+  ];
+  const msgEl = document.getElementById('tickerMsg');
+  let ti = 0;
+  function showInsight(){
+    msgEl.style.opacity = 0;
+    setTimeout(()=>{ msgEl.innerHTML = insights[ti]; msgEl.style.opacity = 1; ti = (ti+1)%insights.length; }, 350);
+  }
+  showInsight();
+  setInterval(showInsight, 4200);
+
+  // live session clock
+  const clockEl = document.getElementById('liveClock');
+  const start = Date.now();
+  function pad(n){ return n.toString().padStart(2,'0'); }
+  setInterval(()=>{
+    const s = Math.floor((Date.now()-start)/1000);
+    clockEl.textContent = `${pad(Math.floor(s/3600))}:${pad(Math.floor(s/60)%60)}:${pad(s%60)}`;
+  }, 1000);
+})();
+
+/* ---------------- Panel 1: compound toggle ---------------- */
+let compoundChart;
+function renderCompound(key){
+  const rows = key === 'paceWorn' ? paceWornData : degradationData;
+  const ctx = document.getElementById('compoundChart');
+  if(compoundChart) compoundChart.destroy();
+  compoundChart = new Chart(ctx, {
+    type:'bar',
+    data:{ labels: rows.map(r=>r.label), datasets:[{ data: rows.map(r=>r.value), backgroundColor: rows.map(r=>r.color), borderRadius:4 }] },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false},
+        tooltip:{ callbacks:{ label:(c)=> key==='paceWorn' ? `${c.raw}s avg lap time` : `${c.raw} degradation / lap` } } },
+      scales:{
+        x:{ grid:{display:false} },
+        y:{ grid:{color:COLORS.grid}, title:{display:true, text: key==='paceWorn' ? 'Avg lap time (s)' : 'Degradation slope', color:COLORS.muted, font:{size:11}} }
+      }
+    }
+  });
+  document.getElementById('compoundNote').style.display = key === 'degradation' ? 'block' : 'none';
+}
+document.getElementById('compoundSelect').addEventListener('change', e=>renderCompound(e.target.value));
+renderCompound('paceWorn');
+
+/* ---------------- Panel 2: pit distribution ---------------- */
+new Chart(document.getElementById('pitDistChart'), {
+  type:'bar',
+  data:{ labels: pitDistData.map(d=>d.lap), datasets:[{ data: pitDistData.map(d=>d.n), backgroundColor: COLORS.red, borderRadius:2, barPercentage:1.0, categoryPercentage:0.95 }] },
+  options:{
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:(c)=> `~${c.raw} pit stops` } } },
+    scales:{
+      x:{ grid:{display:false}, ticks:{ maxTicksLimit:8, font:{size:10} }, title:{display:true, text:'Lap number', color:COLORS.muted, font:{size:11}} },
+      y:{ grid:{color:COLORS.grid} }
+    }
+  }
+});
+
+/* ---------------- Panel 3: pit timing buckets ---------------- */
+new Chart(document.getElementById('pitTimingChart'), {
+  type:'bar',
+  data:{ labels: pitTimingData.map(d=>d.label), datasets:[{ data: pitTimingData.map(d=>d.median), backgroundColor: COLORS.wet, borderRadius:4 }] },
+  options:{
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{display:false},
+      tooltip:{ callbacks:{ label:(c)=> `median ${c.raw>=0?'+':''}${c.raw} positions (n=${pitTimingData[c.dataIndex].n})` } } },
+    scales:{
+      x:{ grid:{display:false} },
+      y:{ grid:{color:COLORS.grid}, suggestedMin:-1, suggestedMax:3, title:{display:true, text:'Median net position change', color:COLORS.muted, font:{size:11}} }
+    }
+  }
+});
+
+/* ---------------- Panel 4: confusion matrix ---------------- */
+document.getElementById('cmGrid').innerHTML = `
+  <div class="cm-cell correct"><div class="cm-label">True Negative</div><div class="cm-count">${cmData.tn.toLocaleString()}</div><div class="cm-cost">predicted no pit, correct</div></div>
+  <div class="cm-cell fp"><div class="cm-label">False Positive</div><div class="cm-count">${cmData.fp.toLocaleString()}</div><div class="cm-cost">flagged, driver didn't pit</div></div>
+  <div class="cm-cell fn"><div class="cm-label">False Negative</div><div class="cm-count">${cmData.fn}</div><div class="cm-cost">missed, driver pitted</div></div>
+  <div class="cm-cell correct"><div class="cm-label">True Positive</div><div class="cm-count">${cmData.tp}</div><div class="cm-cost">flagged, driver pitted</div></div>
+`;
+
+/* ---------------- Panel 5: feature importance ---------------- */
+new Chart(document.getElementById('importanceChart'), {
+  type:'bar',
+  data:{ labels: importanceData.map(d=>d.feature), datasets:[{ data: importanceData.map(d=>d.value), backgroundColor: COLORS.red, borderRadius:4 }] },
+  options:{
+    indexAxis:'y', responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:(c)=> `${(c.raw*100).toFixed(1)}% importance` } } },
+    scales:{ x:{ grid:{color:COLORS.grid} }, y:{ grid:{display:false}, ticks:{font:{size:10.5}} } }
+  }
+});
+
+/* ---------------- Panel 6: model comparison ---------------- */
+new Chart(document.getElementById('modelChart'), {
+  type:'bar',
+  data:{ labels: modelData.map(m=>m.name), datasets:[{ label:'ROC-AUC', data: modelData.map(m=>m.roc_auc*100), backgroundColor: [COLORS.muted, COLORS.red], borderRadius:4 }] },
+  options:{
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:(c)=> `${(c.raw/100).toFixed(3)} ROC-AUC` } } },
+    scales:{ x:{ grid:{display:false} }, y:{ grid:{color:COLORS.grid}, min:0, max:100, title:{display:true,text:'ROC-AUC (%)', color:COLORS.muted, font:{size:11}} } }
+  }
+});
+const tbody = document.getElementById('modelTable');
+modelData.forEach(m=>{
+  const tr = document.createElement('tr');
+  if(m.best) tr.className='best';
+  tr.innerHTML = `<td>${m.name}${m.best?' ★':''}</td><td>${m.roc_auc}</td><td>${m.precision ?? '&mdash;'}</td><td>${m.recall ?? '&mdash;'}</td><td>${m.f1 ?? '&mdash;'}</td>`;
+  tbody.appendChild(tr);
+});
+
+/* ---------------- Panel 7: LIVE threshold explorer ---------------- */
+const prChartCtx = document.getElementById('prChart');
+const prChart = new Chart(prChartCtx, {
+  type:'line',
+  data:{
+    labels: prPoints.map(p=>p.r),
+    datasets:[
+      { label:'Precision vs Recall (measured)', data: prPoints.map(p=>({x:p.r, y:p.p})), borderColor: COLORS.red, backgroundColor: COLORS.red, tension:0.3, pointRadius:5 },
+      { label:'Selected threshold', data: [{x:prPoints[1].r, y:prPoints[1].p}], borderColor: COLORS.medium, backgroundColor: COLORS.medium, pointRadius:8, showLine:false }
+    ]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:false,
+    parsing:false,
+    plugins:{ legend:{ position:'bottom', labels:{boxWidth:12, font:{size:10.5}} } },
+    scales:{
+      x:{ type:'linear', min:0, max:1, grid:{color:COLORS.grid}, title:{display:true, text:'Recall', color:COLORS.muted, font:{size:11}} },
+      y:{ min:0, max:1, grid:{color:COLORS.grid}, title:{display:true, text:'Precision', color:COLORS.muted, font:{size:11}} }
+    }
+  }
+});
+
+function interp(t){
+  // piecewise-linear interpolation between the three measured thresholds
+  if(t <= prPoints[0].t) return prPoints[0];
+  if(t >= prPoints[prPoints.length-1].t) return prPoints[prPoints.length-1];
+  for(let i=0;i<prPoints.length-1;i++){
+    const a = prPoints[i], b = prPoints[i+1];
+    if(t >= a.t && t <= b.t){
+      const f = (t - a.t) / (b.t - a.t);
+      return {
+        t, p: a.p + f*(b.p-a.p), r: a.r + f*(b.r-a.r), f1: a.f1 + f*(b.f1-a.f1),
+        flagged: Math.round(a.flagged + f*(b.flagged-a.flagged))
+      };
+    }
+  }
+  return prPoints[1];
+}
+
+const slider = document.getElementById('threshSlider');
+function updateLive(){
+  const t = parseFloat(slider.value);
+  const m = interp(t);
+  document.getElementById('threshVal').textContent = t.toFixed(2);
+  document.getElementById('lmPrecision').textContent = m.p.toFixed(2);
+  document.getElementById('lmRecall').textContent = m.r.toFixed(2);
+  document.getElementById('lmF1').textContent = m.f1.toFixed(2);
+  document.getElementById('lmFlagged').textContent = m.flagged.toLocaleString();
+  prChart.data.datasets[1].data = [{x:m.r, y:m.p}];
+  prChart.update('none');
+}
+slider.addEventListener('input', updateLive);
+updateLive();
+</script>
+</body>
+</html>
